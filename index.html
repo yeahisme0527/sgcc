@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SGCC — SSG 배송 경로 최적화</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+/* ── 기본 리셋 ── */
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;background:#f8f9fc;color:#1a1a1a;min-height:100vh;}
+
+/* ── 네비게이션 ── */
+nav{background:#1B3A6B;padding:0 32px;display:flex;align-items:center;height:58px;position:sticky;top:0;z-index:1000;box-shadow:0 2px 12px rgba(0,0,0,.18);}
+.nav-logo{color:#fff;font-size:18px;font-weight:700;margin-right:40px;letter-spacing:.5px;}
+.nav-logo span{color:#7EC8E3;}
+.nav-tabs{display:flex;gap:4px;}
+.nav-tab{background:none;border:none;color:#AAC8FF;padding:8px 20px;border-radius:6px;cursor:pointer;font-size:14px;font-family:inherit;font-weight:600;transition:.2s;}
+.nav-tab:hover{background:rgba(255,255,255,.1);color:#fff;}
+.nav-tab.active{background:#2C5F9E;color:#fff;}
+.nav-badge{margin-left:auto;background:#2E7D52;color:#fff;font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;}
+
+/* ── 페이지 섹션 ── */
+.page{display:none;animation:fadeIn .3s ease;}
+.page.active{display:block;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+
+/* ── 공통 컨테이너 ── */
+.container{max-width:1100px;margin:0 auto;padding:32px 24px;}
+
+/* ━━━ HOME ━━━ */
+.hero{background:linear-gradient(135deg,#1B3A6B 0%,#2C5F9E 60%,#1a6b3a 100%);padding:64px 32px;text-align:center;color:#fff;}
+.hero h1{font-size:36px;font-weight:800;margin-bottom:12px;}
+.hero h1 span{color:#7EC8E3;}
+.hero p{font-size:16px;color:#AAC8FF;margin-bottom:40px;max-width:600px;margin-left:auto;margin-right:auto;}
+.kpi-strip{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-top:8px;}
+.kpi-card{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:14px;padding:20px 28px;min-width:150px;text-align:center;backdrop-filter:blur(4px);}
+.kpi-card .val{font-size:30px;font-weight:800;color:#fff;display:block;}
+.kpi-card .lbl{font-size:12px;color:#AAC8FF;margin-top:4px;display:block;}
+.kpi-card .sub{font-size:11px;color:#7799CC;margin-top:2px;display:block;}
+
+.home-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:32px;}
+.home-card{background:#fff;border-radius:14px;padding:28px;box-shadow:0 2px 12px rgba(0,0,0,.07);cursor:pointer;transition:.2s;border:2px solid transparent;}
+.home-card:hover{border-color:#2C5F9E;transform:translateY(-3px);box-shadow:0 8px 24px rgba(27,58,107,.12);}
+.home-card .icon{font-size:32px;margin-bottom:14px;}
+.home-card h3{font-size:16px;font-weight:700;color:#1B3A6B;margin-bottom:8px;}
+.home-card p{font-size:13px;color:#666;line-height:1.6;}
+.home-card .tag{display:inline-block;margin-top:12px;background:#EBF2FF;color:#2C5F9E;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;}
+
+/* ━━━ 시뮬레이터 ━━━ */
+.sim-header{background:#fff;padding:16px 24px;border-bottom:1px solid #e0e3e8;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+.sim-header h2{font-size:16px;font-weight:700;color:#1B3A6B;margin-right:8px;}
+.btn{padding:9px 20px;border:none;border-radius:7px;cursor:pointer;font-weight:700;font-size:13px;font-family:inherit;transition:.15s;display:inline-flex;align-items:center;gap:6px;}
+.btn:hover{opacity:.85;transform:translateY(-1px);}
+.btn:active{transform:translateY(0);}
+.btn-navy{background:#1B3A6B;color:#fff;}
+.btn-gray{background:#95a5a6;color:#fff;}
+.btn-blue{background:#3498db;color:#fff;}
+.btn-green{background:#2ecc71;color:#fff;}
+.btn-reset{background:#e74c3c;color:#fff;}
+
+.stat-bar{margin-left:auto;display:flex;gap:10px;}
+.stat-box{text-align:center;padding:6px 16px;background:#f8f9fc;border:1px solid #e0e3e8;border-radius:8px;min-width:90px;}
+.stat-box .slabel{font-size:10px;color:#888;display:block;}
+.stat-box .sval{font-size:16px;font-weight:800;color:#1B3A6B;display:block;}
+.stat-box.highlight{border-color:#2E7D52;background:#E8F5EE;}
+.stat-box.highlight .sval{color:#2E7D52;}
+
+#map{height:calc(100vh - 230px);min-height:400px;}
+
+.carbon-banner{background:#1B3A6B;color:#fff;padding:10px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;font-size:13px;}
+.carbon-banner strong{font-size:16px;color:#7EC8E3;}
+.carbon-item{display:flex;align-items:center;gap:6px;}
+
+/* ━━━ 대시보드 ━━━ */
+.section-title{font-size:22px;font-weight:800;color:#1B3A6B;margin-bottom:6px;}
+.section-sub{font-size:13px;color:#666;margin-bottom:28px;}
+
+.result-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:32px;}
+.result-card{background:#fff;border-radius:12px;padding:20px 16px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.07);}
+.result-card .big{font-size:28px;font-weight:800;color:#1B3A6B;display:block;}
+.result-card .mid{font-size:12px;font-weight:700;color:#333;margin-top:4px;display:block;}
+.result-card .small{font-size:11px;color:#888;margin-top:2px;display:block;}
+.result-card.green-card{background:#E8F5EE;border:1.5px solid #2E7D52;}
+.result-card.green-card .big{color:#2E7D52;}
+
+.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:32px;}
+.chart-box{background:#fff;border-radius:14px;padding:24px;box-shadow:0 2px 10px rgba(0,0,0,.07);}
+.chart-box h3{font-size:14px;font-weight:700;color:#1B3A6B;margin-bottom:18px;}
+
+/* 막대 차트 */
+.bar-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.bar-label{font-size:12px;font-weight:600;color:#333;width:110px;flex-shrink:0;}
+.bar-track{flex:1;background:#f0f2f5;border-radius:6px;height:26px;overflow:hidden;}
+.bar-fill{height:100%;border-radius:6px;display:flex;align-items:center;padding-left:10px;font-size:11px;font-weight:700;color:#fff;transition:width 1s ease;}
+.bar-val{font-size:12px;font-weight:700;color:#1B3A6B;width:80px;text-align:right;flex-shrink:0;}
+
+/* KPI 표 */
+.kpi-table{width:100%;border-collapse:collapse;font-size:13px;}
+.kpi-table th{background:#1B3A6B;color:#fff;padding:10px 14px;text-align:left;}
+.kpi-table td{padding:10px 14px;border-bottom:1px solid #eee;}
+.kpi-table tr:nth-child(even) td{background:#f8f9fc;}
+.kpi-table tr:last-child td{background:#E8F5EE;font-weight:700;color:#2E7D52;}
+.badge-ok{background:#2E7D52;color:#fff;font-size:11px;font-weight:700;padding:2px 10px;border-radius:20px;}
+
+/* 탄소 계산기 */
+.calc-box{background:linear-gradient(135deg,#1B3A6B,#2C5F9E);border-radius:14px;padding:28px;color:#fff;margin-bottom:20px;}
+.calc-box h3{font-size:16px;font-weight:700;margin-bottom:16px;}
+.calc-input{display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap;}
+.calc-input label{font-size:13px;color:#AAC8FF;}
+.calc-input input{padding:8px 14px;border-radius:8px;border:none;font-size:14px;font-family:inherit;width:120px;}
+.calc-result{display:flex;gap:20px;flex-wrap:wrap;}
+.calc-num{text-align:center;}
+.calc-num .n{font-size:28px;font-weight:800;color:#7EC8E3;}
+.calc-num .u{font-size:12px;color:#AAC8FF;margin-top:2px;}
+
+/* ━━━ ESG 전략 ━━━ */
+.strategy-hero{background:linear-gradient(135deg,#1a6b3a,#2E7D52);padding:40px 32px;border-radius:16px;color:#fff;margin-bottom:28px;text-align:center;}
+.strategy-hero h2{font-size:26px;font-weight:800;margin-bottom:8px;}
+.strategy-hero p{font-size:14px;color:#a8e6c1;}
+
+.steps-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-bottom:32px;position:relative;}
+.step-card{background:#fff;border-radius:0;padding:24px 20px;text-align:center;box-shadow:0 2px 10px rgba(0,0,0,.07);position:relative;}
+.step-card:first-child{border-radius:12px 0 0 12px;}
+.step-card:last-child{border-radius:0 12px 12px 0;}
+.step-card::after{content:'→';position:absolute;right:-14px;top:50%;transform:translateY(-50%);font-size:22px;color:#2C5F9E;font-weight:700;z-index:1;}
+.step-card:last-child::after{display:none;}
+.step-num{width:44px;height:44px;background:#1B3A6B;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;margin:0 auto 12px;}
+.step-card h4{font-size:13px;font-weight:700;color:#1B3A6B;margin-bottom:6px;}
+.step-card p{font-size:12px;color:#666;line-height:1.5;}
+
+.seg-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:32px;}
+.seg-card{background:#fff;border-radius:12px;padding:20px;box-shadow:0 2px 10px rgba(0,0,0,.07);display:flex;gap:14px;align-items:flex-start;}
+.seg-dot{width:10px;height:10px;border-radius:50%;margin-top:5px;flex-shrink:0;}
+.seg-card h4{font-size:13px;font-weight:700;color:#1B3A6B;margin-bottom:4px;}
+.seg-card .msg{font-size:13px;color:#333;font-style:italic;margin-bottom:4px;}
+.seg-card .ch{font-size:11px;color:#888;}
+
+.campaign-box{background:#1B3A6B;border-radius:16px;padding:32px;color:#fff;text-align:center;margin-bottom:32px;}
+.campaign-box h3{font-size:22px;font-weight:800;margin-bottom:8px;}
+.campaign-box .slogan{font-size:16px;color:#AAC8FF;margin-bottom:24px;}
+.campaign-stats{display:flex;gap:20px;justify-content:center;flex-wrap:wrap;}
+.cstat{background:rgba(255,255,255,.1);border-radius:10px;padding:16px 24px;text-align:center;}
+.cstat .cv{font-size:24px;font-weight:800;color:#7EC8E3;}
+.cstat .cl{font-size:12px;color:#AAC8FF;margin-top:4px;}
+
+.roadmap{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+.rm-card{background:#fff;border-radius:12px;padding:20px;box-shadow:0 2px 10px rgba(0,0,0,.07);}
+.rm-phase{font-size:11px;font-weight:700;color:#fff;padding:3px 10px;border-radius:20px;display:inline-block;margin-bottom:10px;}
+.rm-card h4{font-size:13px;font-weight:700;color:#1B3A6B;margin-bottom:8px;}
+.rm-card ul{font-size:12px;color:#555;line-height:1.8;padding-left:14px;}
+
+/* ── 푸터 ── */
+footer{background:#1B3A6B;color:#AAC8FF;text-align:center;padding:20px;font-size:12px;margin-top:40px;}
+footer strong{color:#fff;}
+
+/* ── 반응형 ── */
+@media(max-width:768px){
+  .home-cards,.result-grid,.chart-grid,.seg-grid,.steps-grid,.roadmap{grid-template-columns:1fr;}
+  .kpi-strip{gap:10px;}
+  .kpi-card{min-width:120px;padding:14px 16px;}
+  .kpi-card .val{font-size:22px;}
+  .stat-bar{margin-left:0;width:100%;}
+  .step-card::after{display:none;}
+  .step-card{border-radius:12px !important;}
+}
+</style>
+</head>
+<body>
+
+<!-- ━━━ 네비게이션 ━━━ -->
+<nav>
+  <div class="nav-logo">SSG<span>CC</span></div>
+  <div class="nav-tabs">
+    <button class="nav-tab active" onclick="showPage('home')">🏠 홈</button>
+    <button class="nav-tab" onclick="showPage('simulator')">🗺️ 시뮬레이터</button>
+    <button class="nav-tab" onclick="showPage('dashboard')">📊 성과 대시보드</button>
+    <button class="nav-tab" onclick="showPage('esg')">🌿 ESG 전략</button>
+  </div>
+  <div class="nav-badge">2026 아르테크네 #03</div>
+</nav>
+
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<!-- PAGE 1: HOME                                -->
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<div id="page-home" class="page active">
+  <div class="hero">
+    <h1>SSG 배송 경로 <span>최적화</span></h1>
+    <p>배송 이동거리 데이터 분석을 통한 물류 효율화 및<br>탄소배출 저감 기반 ESG 신뢰 마케팅 전략 개발</p>
+    <div class="kpi-strip">
+      <div class="kpi-card">
+        <span class="val" id="cnt1">0%</span>
+        <span class="lbl">이동거리 감소</span>
+        <span class="sub">OR-Tools 적용</span>
+      </div>
+      <div class="kpi-card">
+        <span class="val" id="cnt2">0톤</span>
+        <span class="lbl">연간 CO₂ 절감</span>
+        <span class="sub">월 761 kg</span>
+      </div>
+      <div class="kpi-card">
+        <span class="val" id="cnt3">0그루</span>
+        <span class="lbl">소나무 환산</span>
+        <span class="sub">30년생 기준</span>
+      </div>
+      <div class="kpi-card">
+        <span class="val" id="cnt4">0만원</span>
+        <span class="lbl">연간 연료비 절감</span>
+        <span class="sub">경유 2,000원/L</span>
+      </div>
+      <div class="kpi-card">
+        <span class="val" id="cnt5">0/5</span>
+        <span class="lbl">KPI 달성</span>
+        <span class="sub">전 항목 목표 초과</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="home-cards">
+      <div class="home-card" onclick="showPage('simulator')">
+        <div class="icon">🗺️</div>
+        <h3>배송 경로 시뮬레이터</h3>
+        <p>Baseline · Greedy · MST-DFS 알고리즘을 실시간으로 비교하고 지도에서 경로를 확인해보세요.</p>
+        <span class="tag">▶ 시뮬레이터 열기</span>
+      </div>
+      <div class="home-card" onclick="showPage('dashboard')">
+        <div class="icon">📊</div>
+        <h3>성과 대시보드</h3>
+        <p>실측 데이터 기반 알고리즘 성능 비교, KPI 달성 결과, 탄소 절감 효과를 한눈에 확인하세요.</p>
+        <span class="tag">▶ 대시보드 열기</span>
+      </div>
+      <div class="home-card" onclick="showPage('esg')">
+        <div class="icon">🌿</div>
+        <h3>ESG 마케팅 전략</h3>
+        <p>"나무 심는 SSG 배송" 캠페인과 세그먼트별 ESG 메시지 전략을 확인하세요.</p>
+        <span class="tag">▶ 전략 보기</span>
+      </div>
+    </div>
+
+    <div style="background:#fff;border-radius:14px;padding:24px;margin-top:24px;box-shadow:0 2px 10px rgba(0,0,0,.07);">
+      <div style="font-size:14px;font-weight:700;color:#1B3A6B;margin-bottom:14px;">📋 프로젝트 개요</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:13px;color:#444;line-height:1.8;">
+        <div>
+          <div><strong>팀명</strong> &nbsp; SGCC (SSG Create Crew)</div>
+          <div><strong>CEO</strong> &nbsp; 황예은 · 전체 기획·KPI 설정·탄소 정량화</div>
+          <div><strong>CSO</strong> &nbsp; 방채원 · 데이터 설계·알고리즘 분석</div>
+          <div><strong>CMO</strong> &nbsp; 오지원 · ESG 마케팅 전략 설계</div>
+        </div>
+        <div>
+          <div><strong>분석 거점</strong> &nbsp; 이마트 가든파이브 PP센터</div>
+          <div><strong>데이터</strong> &nbsp; 50개 고객 좌표 (문정·잠실·가락·장지동)</div>
+          <div><strong>최적 알고리즘</strong> &nbsp; OR-Tools (거리 −34%)</div>
+          <div><strong>주관</strong> &nbsp; 2026 아르테크네 프로젝트 #03</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<!-- PAGE 2: 시뮬레이터                           -->
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<div id="page-simulator" class="page">
+  <div class="sim-header">
+    <h2>🗺️ 배송 경로 시뮬레이터</h2>
+    <button class="btn btn-gray" onclick="runAlgo('baseline')">① Baseline</button>
+    <button class="btn btn-blue" onclick="runAlgo('greedy')">② Greedy</button>
+    <button class="btn btn-green" onclick="runAlgo('mst')">③ MST-DFS</button>
+    <button class="btn btn-reset" onclick="resetMap()">↺ 초기화</button>
+    <div class="stat-bar">
+      <div class="stat-box">
+        <span class="slabel">총 이동거리</span>
+        <span class="sval" id="sim-dist">— km</span>
+      </div>
+      <div class="stat-box">
+        <span class="slabel">알고리즘</span>
+        <span class="sval" id="sim-algo">—</span>
+      </div>
+      <div class="stat-box highlight">
+        <span class="slabel">개선율</span>
+        <span class="sval" id="sim-improve">—</span>
+      </div>
+    </div>
+  </div>
+  <div id="map"></div>
+  <div class="carbon-banner" id="carbon-banner" style="display:none;">
+    <span>🌿 이 경로 적용 시</span>
+    <div class="carbon-item">💨 <strong id="b-co2">—</strong> kg CO₂/월 절감</div>
+    <div class="carbon-item">🌳 소나무 <strong id="b-tree">—</strong> 그루/년 흡수량</div>
+    <div class="carbon-item">⛽ 연료비 <strong id="b-fuel">—</strong> 만원/년 절감</div>
+  </div>
+</div>
+
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<!-- PAGE 3: 성과 대시보드                         -->
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<div id="page-dashboard" class="page">
+<div class="container">
+  <div class="section-title">📊 성과 대시보드</div>
+  <div class="section-sub">2024년 5월 실측 데이터 기반 · 558개 경로 · 이마트 가든파이브 PP센터</div>
+
+  <!-- 핵심 KPI 5칸 -->
+  <div class="result-grid">
+    <div class="result-card green-card">
+      <span class="big">−34%</span>
+      <span class="mid">이동거리 감소</span>
+      <span class="small">10,198 → 6,731 km/월</span>
+    </div>
+    <div class="result-card green-card">
+      <span class="big">9.13톤</span>
+      <span class="mid">연간 CO₂ 절감</span>
+      <span class="small">월 761 kg 감소</span>
+    </div>
+    <div class="result-card green-card">
+      <span class="big">1,384그루</span>
+      <span class="mid">소나무 환산</span>
+      <span class="small">30년생 연간 흡수량</span>
+    </div>
+    <div class="result-card green-card">
+      <span class="big">707만원</span>
+      <span class="mid">연간 연료비 절감</span>
+      <span class="small">3,537 L/년 절감</span>
+    </div>
+    <div class="result-card green-card">
+      <span class="big">5/5</span>
+      <span class="mid">KPI 전 항목 달성</span>
+      <span class="small">목표 초과 달성</span>
+    </div>
+  </div>
+
+  <!-- 차트 2개 -->
+  <div class="chart-grid">
+    <!-- 이동거리 막대 -->
+    <div class="chart-box">
+      <h3>📦 알고리즘별 월간 이동거리 비교</h3>
+      <div class="bar-row">
+        <div class="bar-label">Baseline</div>
+        <div class="bar-track"><div class="bar-fill" style="width:100%;background:#95a5a6;" id="bar0">10,198 km</div></div>
+        <div class="bar-val">10,198 km</div>
+      </div>
+      <div class="bar-row">
+        <div class="bar-label">Nearest Neighbor</div>
+        <div class="bar-track"><div class="bar-fill" style="width:0%;background:#3498db;" id="bar1"></div></div>
+        <div class="bar-val">9,484 km</div>
+      </div>
+      <div class="bar-row">
+        <div class="bar-label">Clarke-Wright</div>
+        <div class="bar-track"><div class="bar-fill" style="width:0%;background:#F39C12;" id="bar2"></div></div>
+        <div class="bar-val">7,852 km</div>
+      </div>
+      <div class="bar-row">
+        <div class="bar-label" style="font-weight:800;color:#2E7D52;">OR-Tools ★</div>
+        <div class="bar-track"><div class="bar-fill" style="width:0%;background:#2E7D52;" id="bar3"></div></div>
+        <div class="bar-val" style="color:#2E7D52;font-weight:800;">6,731 km</div>
+      </div>
+    </div>
+
+    <!-- 탄소 절감 -->
+    <div class="chart-box">
+      <h3>🌿 탄소배출 절감 효과 (OR-Tools 기준)</h3>
+      <div style="margin-bottom:12px;">
+        <div style="font-size:12px;color:#666;margin-bottom:6px;">월간 CO₂ 배출량 비교</div>
+        <div class="bar-row">
+          <div class="bar-label" style="width:80px;">현재</div>
+          <div class="bar-track"><div class="bar-fill" style="width:100%;background:#C0392B;">2,238 kg</div></div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label" style="width:80px;">OR-Tools</div>
+          <div class="bar-track"><div class="bar-fill" style="width:0%;background:#2E7D52;" id="co2bar">1,477 kg</div></div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px;">
+        <div style="background:#E8F5EE;border-radius:8px;padding:12px;text-align:center;">
+          <div style="font-size:22px;font-weight:800;color:#2E7D52;">761 kg</div>
+          <div style="font-size:11px;color:#666;">월 CO₂ 절감량</div>
+        </div>
+        <div style="background:#EBF2FF;border-radius:8px;padding:12px;text-align:center;">
+          <div style="font-size:22px;font-weight:800;color:#1B3A6B;">1,384그루</div>
+          <div style="font-size:11px;color:#666;">소나무 연간 흡수량</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- KPI 달성표 -->
+  <div class="chart-box" style="margin-bottom:24px;">
+    <h3>✅ KPI 목표 대비 달성 결과</h3>
+    <table class="kpi-table">
+      <thead>
+        <tr><th>KPI 항목</th><th>목표</th><th>OR-Tools 적용 결과</th><th>달성</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>총 이동거리 감소율</td><td>20% 이상</td><td>34% (10,198 → 6,731 km/월)</td><td><span class="badge-ok">✅ 달성</span></td></tr>
+        <tr><td>배송시간 단축</td><td>15% 이상</td><td>약 22% (차량 운행 효율 개선)</td><td><span class="badge-ok">✅ 달성</span></td></tr>
+        <tr><td>탄소배출 감소</td><td>정량화</td><td>월 761 kg · 연 9.13톤 CO₂ 절감</td><td><span class="badge-ok">✅ 달성</span></td></tr>
+        <tr><td>환경비용(연료비) 절감</td><td>600만원/년 이상</td><td>약 707만원/년 (연료 3,537 L)</td><td><span class="badge-ok">✅ 달성</span></td></tr>
+        <tr><td>나무 식재 환산 효과</td><td>스토리화</td><td>소나무 약 1,384그루/년 흡수량</td><td><span class="badge-ok">✅ 달성</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 탄소 계산기 -->
+  <div class="calc-box">
+    <h3>🌱 나의 배송 탄소 계산기</h3>
+    <div class="calc-input">
+      <label>월간 배송 건수</label>
+      <input type="number" id="calc-orders" value="100" min="1" oninput="calcMyCarbon()">
+      <label>건</label>
+    </div>
+    <div class="calc-result" id="calc-result">
+      <div class="calc-num"><div class="n" id="c-dist">—</div><div class="u">km 절감/월</div></div>
+      <div class="calc-num"><div class="n" id="c-co2">—</div><div class="u">kg CO₂ 절감/월</div></div>
+      <div class="calc-num"><div class="n" id="c-tree">—</div><div class="u">소나무 그루/년</div></div>
+      <div class="calc-num"><div class="n" id="c-fuel">—</div><div class="u">원 연료비 절감/월</div></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<!-- PAGE 4: ESG 전략                            -->
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<div id="page-esg" class="page">
+<div class="container">
+  <div class="strategy-hero">
+    <h2>🌿 ESG 신뢰 마케팅 전략</h2>
+    <p>"속도 경쟁이 아닌 신뢰 경쟁으로 — 검증 가능한 친환경 배송"</p>
+  </div>
+
+  <!-- 4단계 프레임워크 -->
+  <div class="section-title">ESG 신뢰 마케팅 4단계 프레임워크</div>
+  <div class="section-sub" style="margin-bottom:16px;">물류 효율화 성과를 고객 신뢰로 전환하는 단계별 전략</div>
+  <div class="steps-grid" style="margin-bottom:32px;">
+    <div class="step-card">
+      <div class="step-num">①</div>
+      <h4>물류 효율화</h4>
+      <p>OR-Tools 경로 최적화<br>이동거리 <strong>34%↓</strong></p>
+    </div>
+    <div class="step-card">
+      <div class="step-num">②</div>
+      <h4>ESG 성과 데이터화</h4>
+      <p>탄소 절감 <strong>9.13톤/년</strong><br>= 소나무 1,384그루 가시화</p>
+    </div>
+    <div class="step-card">
+      <div class="step-num">③</div>
+      <h4>고객 접점 공시</h4>
+      <p>앱 탄소 절감 대시보드<br>배송 완료 ESG 메시지</p>
+    </div>
+    <div class="step-card">
+      <div class="step-num">④</div>
+      <h4>브랜드 신뢰 형성</h4>
+      <p>"나무 심는 SSG 배송"<br>MZ세대 SNS 확산</p>
+    </div>
+  </div>
+
+  <!-- 캠페인 -->
+  <div class="campaign-box">
+    <h3>🌳 핵심 캠페인 — "나무 심는 SSG 배송"</h3>
+    <div class="slogan">"당신의 주문이 나무가 됩니다"</div>
+    <div class="campaign-stats">
+      <div class="cstat"><div class="cv">9.13톤</div><div class="cl">연간 CO₂ 절감</div></div>
+      <div class="cstat"><div class="cv">1,384그루</div><div class="cl">소나무 환산/년</div></div>
+      <div class="cstat"><div class="cv">707만원</div><div class="cl">연간 연료비 절감</div></div>
+      <div class="cstat"><div class="cv">34%↓</div><div class="cl">이동거리 감소</div></div>
+    </div>
+  </div>
+
+  <!-- 세그먼트별 메시지 -->
+  <div class="section-title">세그먼트별 ESG 메시지 전략</div>
+  <div class="section-sub" style="margin-bottom:16px;">4개 고객 유형별 맞춤 메시지 설계</div>
+  <div class="seg-grid" style="margin-bottom:32px;">
+    <div class="seg-card">
+      <div class="seg-dot" style="background:#3498db;"></div>
+      <div>
+        <h4>🚀 속도 우선형</h4>
+        <div class="msg">"경로 최적화로 더 빠르게, 더 친환경으로"</div>
+        <div class="ch">채널: 앱 배송추적 화면 · 단축 배송시간 + 탄소절감 병기</div>
+      </div>
+    </div>
+    <div class="seg-card">
+      <div class="seg-dot" style="background:#2E7D52;"></div>
+      <div>
+        <h4>🌿 친환경 가치형 (MZ세대)</h4>
+        <div class="msg">"이번 달 SSG 배송으로 나무 ○그루 심었습니다"</div>
+        <div class="ch">채널: SNS · 앱 배지 · 개인별 누적 탄소절감 가시화</div>
+      </div>
+    </div>
+    <div class="seg-card">
+      <div class="seg-dot" style="background:#8E44AD;"></div>
+      <div>
+        <h4>🎯 신뢰·정확성형</h4>
+        <div class="msg">"정확한 배송 + 친환경 포장으로 믿을 수 있는 SSG"</div>
+        <div class="ch">채널: 앱 푸시 · 이메일 · 정시율 + 친환경 포장 정보</div>
+      </div>
+    </div>
+    <div class="seg-card">
+      <div class="seg-dot" style="background:#E67E22;"></div>
+      <div>
+        <h4>💰 비용 민감형</h4>
+        <div class="msg">"묶음배송으로 배송비 절약 + 탄소도 함께 절감"</div>
+        <div class="ch">채널: 장바구니 화면 · 묶음배송 ESG 포인트 적립</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 12개월 로드맵 -->
+  <div class="section-title">12개월 실행 로드맵</div>
+  <div class="section-sub" style="margin-bottom:16px;">신뢰 기반 구축 → 참여 확산 → 브랜드 자산화</div>
+  <div class="roadmap">
+    <div class="rm-card">
+      <span class="rm-phase" style="background:#1B3A6B;">1단계 0~3개월</span>
+      <h4>신뢰 기반 구축</h4>
+      <ul>
+        <li>탄소 절감 데이터 검증·공시 체계</li>
+        <li>앱 탄소 절감 대시보드 오픈</li>
+        <li>배송 완료 알림 ESG 메시지 삽입</li>
+      </ul>
+    </div>
+    <div class="rm-card">
+      <span class="rm-phase" style="background:#2C5F9E;">2단계 3~6개월</span>
+      <h4>참여 확산</h4>
+      <ul>
+        <li>"나무 심는 SSG 배송" 캠페인 론칭</li>
+        <li>친환경 배송 선택 시 포인트 적립</li>
+        <li>세그먼트별 맞춤 ESG 메시지 발송</li>
+      </ul>
+    </div>
+    <div class="rm-card">
+      <span class="rm-phase" style="background:#2E7D52;">3단계 6~12개월</span>
+      <h4>브랜드 자산화</h4>
+      <ul>
+        <li>누적 탄소 절감 리포트 공개</li>
+        <li>ESG 배지·SNS 확산</li>
+        <li>충성고객 친환경 멤버십 연계</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- 출처 -->
+  <div style="background:#f8f9fc;border-radius:10px;padding:16px;margin-top:24px;font-size:11.5px;color:#777;line-height:1.8;">
+    <strong style="color:#444;">📚 데이터 출처</strong><br>
+    경유 배출계수 2.582 kg CO₂/L — 한국기후·환경네트워크(KCEN) &nbsp;|&nbsp;
+    소나무 흡수량 6.6 kg/그루·년 — 국립산림과학원 &nbsp;|&nbsp;
+    경유 평균가 2,000원/L — 한국석유공사 오피넷(2026.04) &nbsp;|&nbsp;
+    ESG 구매경험 27.7% — 한경ESG(2025, N=3,000) &nbsp;|&nbsp;
+    ESG 추가지불 의향 73% — 한국경제인협회(2025, N=1,000)
+  </div>
+</div>
+</div>
+
+<footer>
+  <strong>SGCC (SSG Create Crew)</strong> &nbsp;|&nbsp; 황예은 (CEO) · 방채원 (CSO) · 오지원 (CMO) &nbsp;|&nbsp; 빅데이터경영전공 &nbsp;|&nbsp; 2026 아르테크네 프로젝트 #03
+</footer>
+
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<!-- JAVASCRIPT                                  -->
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<script>
+// ── 실제 고객 데이터 (CSV 기반)
+const CUSTOMERS = [{"id":0,"lat":37.5070237465,"lon":127.1067434054,"dong":"잠실동"},{"id":1,"lat":37.4840411111,"lon":127.1182882424,"dong":"문정동"},{"id":2,"lat":37.4951241602,"lon":127.1442392897,"dong":"가락동"},{"id":3,"lat":37.4847456902,"lon":127.1249016525,"dong":"문정동"},{"id":4,"lat":37.4852249865,"lon":127.1255858306,"dong":"문정동"},{"id":5,"lat":37.4944901676,"lon":127.1212744483,"dong":"장지동"},{"id":6,"lat":37.4971272172,"lon":127.1431859959,"dong":"가락동"},{"id":7,"lat":37.5054237531,"lon":127.1072416071,"dong":"잠실동"},{"id":8,"lat":37.4932837174,"lon":127.1434486612,"dong":"가락동"},{"id":9,"lat":37.4858637939,"lon":127.1193074922,"dong":"문정동"},{"id":10,"lat":37.4931931524,"lon":127.139992735,"dong":"가락동"},{"id":11,"lat":37.4917028163,"lon":127.1451574408,"dong":"가락동"},{"id":12,"lat":37.4906454891,"lon":127.1396981313,"dong":"가락동"},{"id":13,"lat":37.5057418717,"lon":127.1062513517,"dong":"잠실동"},{"id":14,"lat":37.4842119431,"lon":127.1225373437,"dong":"문정동"},{"id":15,"lat":37.4853084629,"lon":127.123031679,"dong":"문정동"},{"id":16,"lat":37.5046984559,"lon":127.1080716757,"dong":"잠실동"},{"id":17,"lat":37.4838506036,"lon":127.1273650559,"dong":"문정동"},{"id":18,"lat":37.5052032705,"lon":127.1058872025,"dong":"잠실동"},{"id":19,"lat":37.5066848949,"lon":127.1083359363,"dong":"잠실동"},{"id":20,"lat":37.4919006252,"lon":127.1405737172,"dong":"가락동"},{"id":21,"lat":37.5077257279,"lon":127.1028375387,"dong":"잠실동"},{"id":22,"lat":37.4856923211,"lon":127.12245726,"dong":"문정동"},{"id":23,"lat":37.4853308557,"lon":127.1272712392,"dong":"문정동"},{"id":24,"lat":37.4923327498,"lon":127.1464039746,"dong":"가락동"},{"id":25,"lat":37.4957762715,"lon":127.1166729888,"dong":"장지동"},{"id":26,"lat":37.4843535426,"lon":127.1252728709,"dong":"문정동"},{"id":27,"lat":37.4808131574,"lon":127.1195277718,"dong":"문정동"},{"id":28,"lat":37.4948607828,"lon":127.1235357071,"dong":"장지동"},{"id":29,"lat":37.4941785649,"lon":127.1181440261,"dong":"장지동"},{"id":30,"lat":37.4818158258,"lon":127.1188854938,"dong":"문정동"},{"id":31,"lat":37.4955840568,"lon":127.1188385834,"dong":"장지동"},{"id":32,"lat":37.4891982452,"lon":127.1420012737,"dong":"가락동"},{"id":33,"lat":37.4967384318,"lon":127.1432937144,"dong":"가락동"},{"id":34,"lat":37.5046302304,"lon":127.1061526504,"dong":"잠실동"},{"id":35,"lat":37.5072968912,"lon":127.1080855781,"dong":"잠실동"},{"id":36,"lat":37.4977807728,"lon":127.1165829964,"dong":"장지동"},{"id":37,"lat":37.4834951711,"lon":127.1220962807,"dong":"문정동"},{"id":38,"lat":37.4944235587,"lon":127.1417736904,"dong":"가락동"},{"id":39,"lat":37.5052666371,"lon":127.1059534028,"dong":"잠실동"},{"id":40,"lat":37.5023990856,"lon":127.105421698,"dong":"잠실동"},{"id":41,"lat":37.4954603248,"lon":127.1180065859,"dong":"장지동"},{"id":42,"lat":37.4878722964,"lon":127.1199593414,"dong":"문정동"},{"id":43,"lat":37.4934077369,"lon":127.1433063551,"dong":"가락동"},{"id":44,"lat":37.493864633,"lon":127.1428415473,"dong":"가락동"},{"id":45,"lat":37.4971075917,"lon":127.1198118492,"dong":"장지동"},{"id":46,"lat":37.5072814083,"lon":127.1084405804,"dong":"잠실동"},{"id":47,"lat":37.4936286279,"lon":127.1229106799,"dong":"장지동"},{"id":48,"lat":37.4945775411,"lon":127.1209618013,"dong":"장지동"},{"id":49,"lat":37.506224267,"lon":127.1081803612,"dong":"잠실동"}];
+
+const PP = { lat:37.4786, lon:127.123 };
+const BASELINE_DIST = 10198;
+
+// ── 탭 전환
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  event.currentTarget && event.currentTarget.classList.add('active');
+  // 탭 버튼 active 처리
+  const tabs = document.querySelectorAll('.nav-tab');
+  const map = {home:0, simulator:1, dashboard:2, esg:3};
+  tabs.forEach(t => t.classList.remove('active'));
+  if(map[id] !== undefined) tabs[map[id]].classList.add('active');
+  // 지도 초기화
+  if(id === 'simulator' && !window._mapInit) initMap();
+  // 대시보드 막대 애니메이션
+  if(id === 'dashboard') animateBars();
+}
+
+// ── 홈 카운터 애니메이션
+function animateCounter(id, target, suffix, duration=1500) {
+  const el = document.getElementById(id);
+  let start = 0, step = target/60;
+  const timer = setInterval(() => {
+    start += step;
+    if(start >= target){ start = target; clearInterval(timer); }
+    el.textContent = Math.floor(start) + suffix;
+  }, duration/60);
+}
+window.addEventListener('load', () => {
+  setTimeout(() => {
+    animateCounter('cnt1', 34, '%');
+    animateCounter('cnt2', 913, '톤', 1800);
+    animateCounter('cnt3', 1384, '그루', 2000);
+    animateCounter('cnt4', 707, '만원', 1600);
+    animateCounter('cnt5_', 5, '/5', 1200);
+    // cnt5 별도 처리
+    let c=0; const t=setInterval(()=>{c++;document.getElementById('cnt5').textContent=c+'/5';if(c>=5)clearInterval(t);},250);
+  }, 300);
+});
+
+// ━━━ 시뮬레이터 ━━━
+let map, routeLine, baselineDist=null;
+const dongColors = { '잠실동':'#E74C3C','문정동':'#3498DB','가락동':'#F39C12','장지동':'#9B59B6' };
+
+function haversine(lat1,lon1,lat2,lon2) {
+  const R=6371, d2r=Math.PI/180;
+  const dlat=(lat2-lat1)*d2r, dlon=(lon2-lon1)*d2r;
+  const a=Math.sin(dlat/2)**2+Math.cos(lat1*d2r)*Math.cos(lat2*d2r)*Math.sin(dlon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+function dist(a,b){ return haversine(a.lat,a.lon,b.lat,b.lon); }
+
+function initMap() {
+  window._mapInit = true;
+  map = L.map('map').setView([PP.lat, PP.lon], 13);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(map);
+  // PP센터 마커
+  L.circleMarker([PP.lat,PP.lon],{color:'#1B3A6B',fillColor:'#1B3A6B',fillOpacity:1,radius:10})
+   .bindPopup('<b>🏭 PP센터</b><br>이마트 가든파이브').addTo(map);
+  // 고객 마커 (동별 색상)
+  CUSTOMERS.forEach(c => {
+    const col = dongColors[c.dong] || '#666';
+    L.circleMarker([c.lat,c.lon],{color:col,fillColor:col,fillOpacity:.75,radius:5,weight:1.5})
+     .bindPopup(`<b>고객 #${c.id}</b><br>${c.dong}`)
+     .addTo(map);
+  });
+  // 범례
+  const legend = L.control({position:'bottomright'});
+  legend.onAdd = () => {
+    const d = L.DomUtil.create('div','');
+    d.style.cssText='background:#fff;padding:10px 14px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.15);font-size:12px;line-height:1.9;';
+    d.innerHTML = '<b>범례</b><br>'
+      + Object.entries(dongColors).map(([k,v])=>`<span style="display:inline-block;width:10px;height:10px;background:${v};border-radius:50%;margin-right:6px;"></span>${k}`).join('<br>')
+      + '<br><span style="display:inline-block;width:10px;height:10px;background:#1B3A6B;border-radius:50%;margin-right:6px;"></span>PP센터';
+    return d;
+  };
+  legend.addTo(map);
+}
+
+function runAlgo(type) {
+  if(!window._mapInit) initMap();
+  if(routeLine) map.removeLayer(routeLine);
+  let path=[], color='';
+  if(type==='baseline'){ path=[PP,...CUSTOMERS]; color='#95a5a6'; }
+  else if(type==='greedy'){ path=runGreedy(); color='#3498db'; }
+  else if(type==='mst'){ path=runMST(); color='#2ecc71'; }
+
+  let d=0;
+  for(let i=0;i<path.length-1;i++) d+=dist(path[i],path[i+1]);
+
+  const latlngs = path.map(p=>[p.lat,p.lon]);
+  routeLine = L.polyline(latlngs,{color,weight:3,opacity:.85}).addTo(map);
+  map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
+
+  document.getElementById('sim-dist').textContent = d.toFixed(1)+' km';
+  const names={baseline:'Baseline',greedy:'Greedy',mst:'MST-DFS'};
+  document.getElementById('sim-algo').textContent = names[type];
+
+  if(type==='baseline'){
+    baselineDist=d;
+    document.getElementById('sim-improve').textContent='기준 (0%)';
+    document.getElementById('carbon-banner').style.display='none';
+  } else {
+    const imp = baselineDist ? ((baselineDist-d)/baselineDist*100).toFixed(1)+'%↓' : '—';
+    document.getElementById('sim-improve').textContent = imp;
+    // 탄소 계산
+    const savedKm = baselineDist ? baselineDist-d : BASELINE_DIST-d;
+    const fuel = savedKm*0.085, co2=fuel*2.582, trees=(co2/6.6*12).toFixed(0), fuelCost=(fuel*2000*12/10000).toFixed(0);
+    document.getElementById('b-co2').textContent = (co2).toFixed(0);
+    document.getElementById('b-tree').textContent = trees;
+    document.getElementById('b-fuel').textContent = fuelCost;
+    document.getElementById('carbon-banner').style.display='flex';
+  }
+}
+
+function runGreedy(){
+  let unvisited=[...CUSTOMERS], cur=PP, path=[PP];
+  while(unvisited.length){
+    let ni=0,md=Infinity;
+    unvisited.forEach((c,i)=>{ const d2=dist(cur,c); if(d2<md){md=d2;ni=i;} });
+    cur=unvisited[ni]; path.push(cur); unvisited.splice(ni,1);
+  }
+  return path;
+}
+
+function runMST(){
+  const nodes=[PP,...CUSTOMERS], N=nodes.length;
+  const adj=Array.from({length:N},()=>[]);
+  let visited=new Array(N).fill(false), minEdge=new Array(N).fill(Infinity), parent=new Array(N).fill(-1);
+  minEdge[0]=0;
+  for(let i=0;i<N;i++){
+    let u=-1,mv=Infinity;
+    for(let v=0;v<N;v++) if(!visited[v]&&minEdge[v]<mv){mv=minEdge[v];u=v;}
+    if(u===-1)break;
+    visited[u]=true;
+    if(parent[u]!==-1){adj[parent[u]].push(u);adj[u].push(parent[u]);}
+    for(let v=0;v<N;v++) if(!visited[v]){const d2=dist(nodes[u],nodes[v]);if(d2<minEdge[v]){minEdge[v]=d2;parent[v]=u;}}
+  }
+  let pi=[],dv=new Array(N).fill(false),stack=[0];
+  while(stack.length){const u=stack.pop();if(!dv[u]){dv[u]=true;pi.push(u);adj[u].filter(n=>!dv[n]).reverse().forEach(n=>stack.push(n));}}
+  return pi.map(i=>nodes[i]);
+}
+
+function resetMap(){
+  if(routeLine){ map.removeLayer(routeLine); routeLine=null; }
+  baselineDist=null;
+  document.getElementById('sim-dist').textContent='— km';
+  document.getElementById('sim-algo').textContent='—';
+  document.getElementById('sim-improve').textContent='—';
+  document.getElementById('carbon-banner').style.display='none';
+}
+
+// ━━━ 대시보드 막대 애니메이션
+function animateBars(){
+  const data = [{id:'bar1',pct:92.9},{id:'bar2',pct:77.0},{id:'bar3',pct:66.0},{id:'co2bar',pct:66.0}];
+  const labels = {bar1:'9,484 km',bar2:'7,852 km',bar3:'6,731 km',co2bar:'1,477 kg'};
+  data.forEach(b => {
+    const el = document.getElementById(b.id);
+    if(el){ setTimeout(()=>{ el.style.width=b.pct+'%'; el.textContent=labels[b.id]||''; },100); }
+  });
+}
+
+// ━━━ 탄소 계산기
+function calcMyCarbon(){
+  const orders = parseInt(document.getElementById('calc-orders').value)||0;
+  // 558개 경로 기준 1건당 절감: 3467km/558 = 6.21km
+  const perOrder = 3467/558;
+  const savedKm = perOrder*orders;
+  const fuel = savedKm*0.085;
+  const co2Monthly = fuel*2.582;
+  const treesYearly = (co2Monthly*12/6.6).toFixed(1);
+  const fuelCost = (fuel*2000).toFixed(0);
+  document.getElementById('c-dist').textContent = savedKm.toFixed(1);
+  document.getElementById('c-co2').textContent = co2Monthly.toFixed(1);
+  document.getElementById('c-tree').textContent = treesYearly;
+  document.getElementById('c-fuel').textContent = parseInt(fuelCost).toLocaleString();
+}
+
+// 페이지 로드 시 계산기 초기값
+window.addEventListener('load', () => { calcMyCarbon(); });
+</script>
+</body>
+</html>
